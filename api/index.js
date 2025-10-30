@@ -8,7 +8,7 @@ export default async function handler(req, res) {
   const ACCESS_TOKEN = process.env.WHATSAPP_ACCESS_TOKEN;
   const PHONE_NUMBER_ID = process.env.WHATSAPP_PHONE_NUMBER_ID;
   const GRAPH_API_URL = "https://graph.facebook.com/v19.0";
-  const BUSINESS_ACCOUNT_ID = "process.env.WHATSAPP_BUSINESS_ID";
+  const BUSINESS_ACCOUNT_ID = process.env.WHATSAPP_BUSINESS_ID;
 
   // ✅ Allow CORS (important for frontend)
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -83,7 +83,7 @@ export default async function handler(req, res) {
           payload,
           {
             headers: {
-              Authorization: `Bearer ${WHATSAPP_ACCESS_TOKEN}`,
+              Authorization: `Bearer ${ACCESS_TOKEN}`,
               "Content-Type": "application/json",
             },
           }
