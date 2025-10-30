@@ -4,10 +4,10 @@ export default async function handler(req, res) {
   // ----------------------------
   // 🔧 Configuration
   // ----------------------------
-  const VERIFY_TOKEN = "123456"; // same as Meta Webhook verify token
-  const WHATSAPP_ACCESS_TOKEN = "YOUR_META_ACCESS_TOKEN"; // <--- paste your permanent access token
-  const GRAPH_API_URL = "https://graph.facebook.com/v19.0/";
-  const PHONE_NUMBER_ID = "YOUR_PHONE_NUMBER_ID"; // <--- from Meta Developer dashboard
+  const VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN;
+  const ACCESS_TOKEN = process.env.WHATSAPP_ACCESS_TOKEN;
+  const PHONE_NUMBER_ID = process.env.WHATSAPP_PHONE_ID;
+  const GRAPH_API_URL = "https://graph.facebook.com/v19.0";
   const BUSINESS_ACCOUNT_ID = "YOUR_BUSINESS_ACCOUNT_ID";
 
   // ✅ Allow CORS (important for frontend)
