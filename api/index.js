@@ -98,7 +98,7 @@ export default async function handler(req, res) {
       // ----------------------------
       if (action === "templates") {
         const response = await axios.get(
-          `${GRAPH_API_URL}${BUSINESS_ACCOUNT_ID}/message_templates`,
+          `${GRAPH_API_URL}/${BUSINESS_ACCOUNT_ID}/message_templates`,
           {
             headers: {
               Authorization: `Bearer ${ACCESS_TOKEN}`,
@@ -121,7 +121,7 @@ export default async function handler(req, res) {
           numbers.map(async (num) => {
             try {
               const response = await axios.post(
-                `${GRAPH_API_URL}${PHONE_NUMBER_ID}/messages`,
+                `${GRAPH_API_URL}/${PHONE_NUMBER_ID}/messages`,
                 {
                   messaging_product: "whatsapp",
                   to: num,
