@@ -101,7 +101,7 @@ export default async function handler(req, res) {
           `${GRAPH_API_URL}${BUSINESS_ACCOUNT_ID}/message_templates`,
           {
             headers: {
-              Authorization: `Bearer ${WHATSAPP_ACCESS_TOKEN}`,
+              Authorization: `Bearer ${ACCESS_TOKEN}`,
             },
           }
         );
