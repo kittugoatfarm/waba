@@ -79,7 +79,7 @@ export default async function handler(req, res) {
         }
 
         const response = await axios.post(
-          `${GRAPH_API_URL}${PHONE_NUMBER_ID}/messages`,
+          `${GRAPH_API_URL}/${PHONE_NUMBER_ID}/messages`,
           payload,
           {
             headers: {
@@ -130,7 +130,7 @@ export default async function handler(req, res) {
                 },
                 {
                   headers: {
-                    Authorization: `Bearer ${WHATSAPP_ACCESS_TOKEN}`,
+                    Authorization: `Bearer ${ACCESS_TOKEN}`,
                     "Content-Type": "application/json",
                   },
                 }
