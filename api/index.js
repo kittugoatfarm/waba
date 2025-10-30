@@ -1,5 +1,5 @@
 // ==========================================================
-// ✅ Kittu WhatsApp Platform - Vercel API (By Pralav)
+// ✅ Kittu WhatsApp API (Final Vercel Version by Pralav)
 // ==========================================================
 
 import axios from "axios";
@@ -10,9 +10,9 @@ export default async function handler(req, res) {
   const PHONE_NUMBER_ID = process.env.WHATSAPP_PHONE_ID;
   const GRAPH_API_URL = "https://graph.facebook.com/v19.0";
 
-  // ✅ CORS Headers
+  // ✅ Enable CORS
   res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
   if (req.method === "OPTIONS") return res.status(200).end();
 
@@ -24,103 +24,70 @@ export default async function handler(req, res) {
     const token = req.query["hub.verify_token"];
     const challenge = req.query["hub.challenge"];
 
-    console.log("📩 Verification Attempt:", { mode, token, challenge });
-
     if (mode === "subscribe" && token === VERIFY_TOKEN) {
-      console.log("✅ Webhook Verified Successfully!");
+      console.log("✅ Webhook verified successfully!");
       return res.status(200).send(challenge);
     } else {
-      console.log("❌ Verification Failed");
-      return res.status(403).json({
-        error: "Verification failed",
-        received: token,
-        expected: VERIFY_TOKEN,
-      });
+      return res.status(403).json({ error: "Verification failed" });
     }
   }
 
   // ==========================================================
-  // 2️⃣ INCOMING MESSAGE HANDLER (POST)
+  // 2️⃣ INCOMING WHATSAPP MESSAGES (POST from Meta)
   // ==========================================================
-  if (req.method === "POST") {
+  if (req.method === "POST" && req.body?.entry) {
     try {
-      const body = req.body;
-      console.log("📨 Incoming Webhook Body:", JSON.stringify(body, null, 2));
-
-      const entry = body.entry?.[0];
+      const entry = req.body.entry[0];
       const changes = entry?.changes?.[0];
-      const value = changes?.value;
-      const message = value?.messages?.[0];
+      const message = changes?.value?.messages?.[0];
 
       if (message) {
         const from = message.from;
-        const msgType = message.type;
-        const msgBody =
-          msgType === "text"
-            ? message.text.body
-            : `Received ${msgType} message.`;
+        const text = message.text?.body || "Received a message";
 
-        console.log(`💬 Message from ${from}: ${msgBody}`);
+        console.log(`💬 Message from ${from}: ${text}`);
 
-        // Auto reply (optional)
+        // ✅ Auto reply
         const replyPayload = {
           messaging_product: "whatsapp",
           to: from,
           type: "text",
-          text: { body: `🙏 Thanks for messaging Kittu Goat Farming 🐐\n\nYour message: "${msgBody}"\nWe’ll get back to you soon.` },
+          text: { body: `🙏 Thanks for messaging Kittu Goat Farming 🐐\nYour message: "${text}"` },
         };
 
-        await axios.post(
-          `${GRAPH_API_URL}/${PHONE_NUMBER_ID}/messages`,
-          replyPayload,
-          {
-            headers: {
-              Authorization: `Bearer ${ACCESS_TOKEN}`,
-              "Content-Type": "application/json",
-            },
-          }
-        );
+        await axios.post(`${GRAPH_API_URL}/${PHONE_NUMBER_ID}/messages`, replyPayload, {
+          headers: {
+            Authorization: `Bearer ${ACCESS_TOKEN}`,
+            "Content-Type": "application/json",
+          },
+        });
 
-        return res.status(200).json({ success: true });
+        return res.status(200).json({ success: true, received: text });
       }
 
-      return res.status(200).send("No message content");
+      return res.status(200).send("No message received");
     } catch (error) {
-      console.error("❌ Error handling webhook:", error.response?.data || error);
-      return res.status(500).json({
-        error: "Internal Server Error",
-        details: error.response?.data || error.message,
-      });
+      console.error("❌ Webhook error:", error.response?.data || error.message);
+      return res.status(500).json({ error: error.message });
     }
   }
 
   // ==========================================================
-  // 3️⃣ SEND MESSAGE (Manual POST from Frontend)
+  // 3️⃣ SEND MESSAGE (Manual PUT or POST from Postman / Frontend)
   // ==========================================================
-  if (req.method === "PUT") {
+  if (req.method === "PUT" || req.method === "POST") {
     try {
-      const { to, message, type = "text", template } = req.body;
+      const { to, message } = req.body;
 
-      if (!to) return res.status(400).json({ error: "Missing 'to' number" });
+      if (!to || !message)
+        return res.status(400).json({ error: "Missing 'to' or 'message'" });
 
-      const payload =
-        type === "text"
-          ? {
-              messaging_product: "whatsapp",
-              to,
-              type: "text",
-              text: { body: message },
-            }
-          : {
-              messaging_product: "whatsapp",
-              to,
-              type: "template",
-              template: {
-                name: template?.name,
-                language: { code: template?.lang || "en_US" },
-                components: template?.components || [],
-              },
-            };
+      const payload = {
+        messaging_product: "whatsapp",
+        to,
+        type: "text",
+        text: { body: message },
+      };
 
       const response = await axios.post(
         `${GRAPH_API_URL}/${PHONE_NUMBER_ID}/messages`,
@@ -133,8 +100,8 @@ export default async function handler(req, res) {
         }
       );
 
-      console.log("✅ Message Sent:", response.data);
-      return res.status(200).json(response.data);
+      console.log("✅ Message sent:", response.data);
+      return res.status(200).json({ success: true, data: response.data });
     } catch (error) {
       console.error("❌ Send Error:", error.response?.data || error.message);
       return res.status(500).json({
@@ -145,7 +112,7 @@ export default async function handler(req, res) {
   }
 
   // ==========================================================
-  // ❌ Default (if route not handled)
+  // 4️⃣ INVALID METHOD
   // ==========================================================
   return res.status(405).json({ error: "Method Not Allowed" });
 }
