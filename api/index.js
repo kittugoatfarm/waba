@@ -1,4 +1,15 @@
 import axios from "axios";
+import admin from "firebase-admin";
+
+// ✅ Initialize Firebase Admin
+if (!admin.apps.length) {
+  const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+  admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount),
+  });
+}
+const db = admin.firestore();
+
 
 export default async function handler(req, res) {
   // ----------------------------
@@ -168,16 +179,6 @@ if (action === "webhook") {
       const text = msg.text?.body || "[non-text message]";
       const type = msg.type;
 
-      // ✅ Firestore save
-      const admin = (await import("firebase-admin")).default;
-      if (!admin.apps.length) {
-        const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-        admin.initializeApp({
-          credential: admin.credential.cert(serviceAccount),
-        });
-      }
-
-      const db = admin.firestore();
       await db.collection("conversations").add({
         from,
         to: "You",
