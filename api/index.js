@@ -2,67 +2,56 @@ import axios from "axios";
 import admin from "firebase-admin";
 
 if (!admin.apps.length) {
+  const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
   admin.initializeApp({
-    credential: admin.credential.applicationDefault(),
+    credential: admin.credential.cert(serviceAccount),
   });
 }
 
+const db = admin.firestore();
+
 export default async function handler(req, res) {
-  // ----------------------------
-  // 🔧 Configuration
-  // ----------------------------
   const VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN;
   const ACCESS_TOKEN = process.env.WHATSAPP_ACCESS_TOKEN;
   const PHONE_NUMBER_ID = process.env.WHATSAPP_PHONE_NUMBER_ID;
   const GRAPH_API_URL = "https://graph.facebook.com/v19.0";
   const BUSINESS_ACCOUNT_ID = process.env.WHATSAPP_BUSINESS_ID;
 
-  // ✅ Allow CORS (important for frontend)
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+
   if (req.method === "OPTIONS") return res.status(204).end();
 
-  // ----------------------------
-  // 🏠 Default Home Route
-  // ----------------------------
+  // 🏠 Default route
   if (req.url === "/" && req.method === "GET") {
-    return res
-      .status(200)
-      .send("✅ Kittu WhatsApp API Server is Live and Connected to Meta!");
+    return res.status(200).send("✅ Kittu WhatsApp API Server is Live and Connected to Meta!");
   }
 
-  // ----------------------------
-  // 🔹 Webhook Verification (Meta GET)
-  // ----------------------------
+  // 🔹 Webhook verification
   if (req.method === "GET" && req.query["hub.mode"] === "subscribe") {
     const mode = req.query["hub.mode"];
     const token = req.query["hub.verify_token"];
     const challenge = req.query["hub.challenge"];
-
-    if (mode && token === VERIFY_TOKEN) {
-      console.log("✅ Webhook verified successfully");
-      return res.status(200).send(challenge);
-    } else {
-      return res.status(403).send("Verification failed");
-    }
+    if (mode && token === VERIFY_TOKEN) return res.status(200).send(challenge);
+    else return res.status(403).send("Verification failed");
   }
 
-  // ----------------------------
-  // 💬 Handle POST requests
-  // ----------------------------
+  // 💬 POST requests (actions)
   if (req.method === "POST") {
     const action = req.query.action;
-
     try {
-      // 🟢 1. Send single message
+      // 🟢 Send single message
       if (action === "send") {
         const { recipientNumber, messageType, messageText, templateName, components } = req.body;
 
         if (!recipientNumber) return res.status(400).json({ error: "recipientNumber is required" });
         if (!messageType) return res.status(400).json({ error: "messageType is required" });
 
-        const payload = { messaging_product: "whatsapp", to: recipientNumber };
+        const payload = {
+          messaging_product: "whatsapp",
+          to: recipientNumber,
+        };
 
         if (messageType === "text") {
           payload.type = "text";
@@ -75,109 +64,74 @@ export default async function handler(req, res) {
             language: { code: "en_US" },
             components: components || [],
           };
-        } else {
-          return res.status(400).json({ error: "Unsupported messageType. Use 'text' or 'template'." });
         }
 
         const response = await axios.post(
           `${GRAPH_API_URL}/${PHONE_NUMBER_ID}/messages`,
           payload,
-          { headers: { Authorization: `Bearer ${ACCESS_TOKEN}`, "Content-Type": "application/json" } }
+          {
+            headers: {
+              Authorization: `Bearer ${ACCESS_TOKEN}`,
+              "Content-Type": "application/json",
+            },
+          }
         );
+
+        // 🟢 Save sent message to Firestore
+        await db.collection("conversations").add({
+          from: "You",
+          to: recipientNumber,
+          text: messageText,
+          type: messageType,
+          timestamp: admin.firestore.FieldValue.serverTimestamp(),
+        });
 
         console.log("✅ Message sent:", response.data);
         return res.status(200).json(response.data);
       }
 
-      // 🟡 2. Fetch approved templates
+      // 🟡 Get templates
       if (action === "templates") {
         const response = await axios.get(
           `${GRAPH_API_URL}/${BUSINESS_ACCOUNT_ID}/message_templates`,
-          { headers: { Authorization: `Bearer ${ACCESS_TOKEN}` } }
+          {
+            headers: { Authorization: `Bearer ${ACCESS_TOKEN}` },
+          }
         );
         const approved = response.data.data.filter((t) => t.status === "APPROVED");
         return res.status(200).json({ templates: approved });
       }
 
-      // 🧩 3. Bulk message sending
-      if (action === "bulk") {
-        const { numbers, messageText } = req.body;
-        if (!Array.isArray(numbers) || numbers.length === 0)
-          return res.status(400).json({ error: "numbers array required" });
-
-        const results = await Promise.all(
-          numbers.map(async (num) => {
-            try {
-              const response = await axios.post(
-                `${GRAPH_API_URL}/${PHONE_NUMBER_ID}/messages`,
-                {
-                  messaging_product: "whatsapp",
-                  to: num,
-                  type: "text",
-                  text: { body: messageText || "Hello from Kittu Goat Farm 🐐✨" },
-                },
-                {
-                  headers: {
-                    Authorization: `Bearer ${ACCESS_TOKEN}`,
-                    "Content-Type": "application/json",
-                  },
-                }
-              );
-              return { number: num, success: true, id: response.data.messages[0].id };
-            } catch (err) {
-              return { number: num, success: false, error: err.response?.data || err.message };
-            }
-          })
-        );
-        return res.status(200).json({ message: "Bulk process complete", results });
-      }
-
-      // 🔵 4. Webhook Incoming Message
+      // 🔵 Webhook (incoming messages)
       if (action === "webhook") {
-        console.log("📩 Incoming webhook:", JSON.stringify(req.body, null, 2));
+        const body = req.body;
+        console.log("📩 Incoming webhook:", JSON.stringify(body, null, 2));
 
-        try {
-          const entry = req.body.entry?.[0];
-          const change = entry?.changes?.[0];
-          const value = change?.value;
+        const entry = body.entry?.[0];
+        const changes = entry?.changes?.[0];
+        const value = changes?.value;
 
-          // ✅ Handle incoming messages
-          if (value?.messages && value.messages[0]) {
-            const message = value.messages[0];
-            const from = message.from;
-            const type = message.type;
-            const text =
-              type === "text"
-                ? message.text.body
-                : `📎 ${type} message received`;
-
-            await admin.firestore().collection("conversations").add({
-              from,
-              to: "You",
-              text,
-              type,
-              timestamp: admin.firestore.FieldValue.serverTimestamp(),
-            });
-
-            console.log(`💾 Saved incoming message from ${from}: ${text}`);
-          }
-
-          // ✅ Handle status updates
-          if (value?.statuses && value.statuses[0]) {
-            const status = value.statuses[0];
-            console.log(`📬 Message ${status.status} for ${status.recipient_id}`);
-          }
-
-          return res.status(200).send("EVENT_RECEIVED");
-        } catch (err) {
-          console.error("❌ Webhook Error:", err);
-          return res.status(500).send("Error processing webhook");
+        // 📥 Handle incoming messages
+        const msg = value?.messages?.[0];
+        if (msg) {
+          const from = msg.from;
+          const text = msg.text?.body || "[non-text message]";
+          await db.collection("conversations").add({
+            from,
+            to: "You",
+            text,
+            type: msg.type,
+            timestamp: admin.firestore.FieldValue.serverTimestamp(),
+          });
+          console.log(`💾 Message saved from ${from}: ${text}`);
         }
+
+        return res.status(200).send("Webhook received!");
       }
 
       // ❌ Unknown action
       return res.status(400).json({
-        error: "Unknown action. Use ?action=send | templates | bulk | webhook",
+        error: "Unknown action. Use ?action=send | templates | webhook",
       });
     } catch (err) {
       console.error("❌ Error:", err.response?.data || err.message);
@@ -185,6 +139,5 @@ export default async function handler(req, res) {
     }
   }
 
-  // ❌ Invalid Method
   return res.status(405).send("Method Not Allowed");
 }
